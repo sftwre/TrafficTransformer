@@ -73,7 +73,7 @@ annotations = get_annotations(df_train)
 video_dir = data_base_dir / "train"
 video_ids = list(annotations.keys())
 processed_data = parallel_preprocess_dataset(
-    video_dir, video_ids, num_frames=32, num_workers=4
+    video_dir, video_ids, num_frames=32, image_size=240, num_workers=4
 )
 
 # model init

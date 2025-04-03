@@ -5,12 +5,12 @@ from torchvision.models import vit_b_16
 
 class TrafficTransformer(nn.Module):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, image_size=160, output_dim=64, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.output_dim = 64
         self.hidden_dim = 768
-        self.image_size = 160
+        self.output_dim = output_dim
+        self.image_size = image_size
 
         self.backbone = vit_b_16(image_size=self.image_size)
         self.backbone.heads = nn.Sequential()
@@ -52,7 +52,7 @@ class TrafficTransformer(nn.Module):
         x = x.mean(dim=1)  # [batch_size, T, output_dim]
         x = self.fusion_layer(x)  # [batch_size, output_dim]
 
-        score = self.classifier(x)
-        alert_pred = self.regressor(x)
+        pred_scores = self.classifier(x)
+        pred_alerts = self.regressor(x)
 
-        return score, alert_pred
+        return pred_scores, pred_alerts
