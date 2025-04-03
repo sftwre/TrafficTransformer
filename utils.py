@@ -93,11 +93,11 @@ def process_video(args):
     """
     Function to process an individual video.
     """
-    video_path, video_id, num_frames = args
+    video_path, video_id, num_frames, image_size = args
     try:
         # Extract frames with higher resolution
         frames = extract_keyframes(
-            video_path, num_frames=num_frames, target_size=(160, 160)
+            video_path, num_frames=num_frames, target_size=(image_size, image_size)
         )
 
         # Calculate optical flow
@@ -113,7 +113,9 @@ def process_video(args):
         return video_id, None
 
 
-def parallel_preprocess_dataset(video_dir, video_ids, num_frames=8, num_workers=4):
+def parallel_preprocess_dataset(
+    video_dir, video_ids, num_frames=8, image_size=160, num_workers=4
+):
     """
     Pre-processes multiple videos in parallel.
     """
@@ -121,7 +123,7 @@ def parallel_preprocess_dataset(video_dir, video_ids, num_frames=8, num_workers=
     for video_id in video_ids:
         video_path = os.path.join(video_dir, f"{video_id}.mp4")
         if os.path.exists(video_path):
-            args_list.append((video_path, video_id, num_frames))
+            args_list.append((video_path, video_id, num_frames, image_size))
 
     start_time = time.time()
     print(
