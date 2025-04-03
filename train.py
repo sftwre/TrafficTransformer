@@ -1,25 +1,66 @@
-from torchvision.models import vit_b_16
 from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import KFold
 from utils import get_annotations, parallel_preprocess_dataset
 from dataset import DashcamDataset
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from model import TrafficTransformer
-import torch.nn.functional as F
+from loss import TrafficLoss
 
 
-def train(dataloader):
+def train(model, dataloader, loss_fn, optimizer, device="cpu"):
 
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    model = TrafficTransformer().to(device)
+    # set model in training mode
+    model.train()
+
+    batch_loss = 0
+
+    for batch in dataloader:
+        optimizer.zero_grad()
+
+        frames = batch["frames"].to(device)
+        labels = batch["label"].unsqueeze(1).to(device)
+        alert_time = batch["alert_time"].unsqueeze(1).to(device)
+
+        pred_scores, pred_alerts = model(frames)
+
+        inputs = {"pred_scores": pred_scores, "pred_alerts": pred_alerts}
+        targets = {"label": labels, "alert_time": alert_time}
+
+        loss = loss_fn(inputs=inputs, targets=targets)
+        loss.backward()
+
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+
+        batch_loss += loss.cpu().item()
+
+    epoch_loss = batch_loss / len(dataloader)
+    return epoch_loss
+
+
+@torch.no_grad()
+def eval(model, dataloader, loss_fn, device="cpu"):
+
+    model.eval()
+
+    batch_loss = 0
 
     for batch in dataloader:
         frames = batch["frames"].to(device)
-        labels = batch["label"]
-        output = model(frames)
-        bce_loss = F.binary_cross_entropy(input=output["label"], target=batch["label"])
+        labels = batch["label"].unsqueeze(1).to(device)
+        alert_time = batch["alert_time"].unsqueeze(1).to(device)
+        pred_scores, pred_alerts = model(frames)
+
+        inputs = {"pred_scores": pred_scores, "pred_alerts": pred_alerts}
+        targets = {"label": labels, "alert_time": alert_time}
+        loss = loss_fn(inputs=inputs, targets=targets)
+        batch_loss += loss.cpu().item()
+
+    eval_loss = batch_loss / len(dataloader)
+    return eval_loss
 
 
 data_base_dir = Path("./nexar-collision-prediction")
@@ -34,6 +75,15 @@ video_ids = list(annotations.keys())
 processed_data = parallel_preprocess_dataset(
     video_dir, video_ids, num_frames=32, num_workers=4
 )
+
+# model init
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+model = TrafficTransformer(image_size=240).to(device)
+
+optimizer = torch.optim.Adam(model.parameters(), lr=5e-3)
+
+loss_fn = TrafficLoss()
 
 
 # Set up k-fold validation
@@ -69,4 +119,9 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(df_train)):
     train_dataloader = DataLoader(train_dataset, batch_size=2, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=True)
 
-    train(train_dataloader)
+    train_loss = train(model, train_dataloader, loss_fn, optimizer, device=device)
+    val_loss = eval(model, val_dataloader, loss_fn, device=device)
+
+    print(
+        f"Fold [{fold+1}/{k}] -> train loss: {train_loss:.3f}, val loss: {val_loss:.3f}"
+    )
