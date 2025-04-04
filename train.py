@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.model_selection import KFold
 from utils import get_annotations, parallel_preprocess_dataset
 from dataset import DashcamDataset
+from transforms import basic_transforms
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -111,10 +112,16 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(df_train)):
         val_annons[id] = annotations[id]
         val_frames[id] = processed_data[id]
 
-    train_dataset = DashcamDataset(
-        processed_data=train_frames, annotations=train_annons
-    )
-    val_dataset = DashcamDataset(processed_data=val_frames, annotations=val_annons)
+        train_dataset = DashcamDataset(
+            processed_data=train_frames,
+            annotations=train_annons,
+            transform=basic_transforms,
+        )
+        val_dataset = DashcamDataset(
+            processed_data=val_frames,
+            annotations=val_annons,
+            transform=basic_transforms,
+        )
 
     train_dataloader = DataLoader(train_dataset, batch_size=2, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=True)
