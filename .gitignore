@@ -3,3 +3,5 @@
 /.ipynb_checkpoints
 /__pycache__
 /notebooks
+/runs
+/models

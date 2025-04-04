@@ -12,7 +12,7 @@ class TrafficTransformer(nn.Module):
         self.output_dim = output_dim
         self.image_size = image_size
 
-        self.backbone = vit_b_16(image_size=self.image_size)
+        self.backbone = vit_b_16(weights="DEFAULT", image_size=self.image_size)
         self.backbone.heads = nn.Sequential()
 
         self.classifier = nn.Sequential(
