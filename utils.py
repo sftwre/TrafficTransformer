@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import pandas as pd
 from multiprocessing import Pool
+import torch.nn as nn
 from logging import getLogger
 
 
@@ -140,6 +141,21 @@ def parallel_preprocess_dataset(
     logger.info(f"Processed {len(processed_data)} out of {len(args_list)} videos.")
 
     return processed_data
+
+
+def count_trainable_params(model: nn.Module) -> int:
+    """
+    Counts the number of trainable parameters in a PyTorch model.
+
+    Args:
+        model: PyTorch model
+
+    Returns:
+        Number of trainable parameters in the model
+    """
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 def save_model(state_dict: dict, filename: str):
     """
     Writes model weights to disk.

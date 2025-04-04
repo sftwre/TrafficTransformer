@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.model_selection import KFold
 from utils import get_annotations, parallel_preprocess_dataset
     save_model,
+    count_trainable_params,
 from dataset import DashcamDataset
 from transforms import basic_transforms
 import torch
@@ -161,8 +162,15 @@ if __name__ == "__main__":
 
         # model init
         model = TrafficTransformer(image_size=args.image_size).to(device)
+
         logger.info(f"Initialized TrafficTransormer and moved to {device}")
+
+        if fold == 0:
+            ttl_params = count_trainable_params(model)
+            logger.info(f"Model contains {ttl_params:,d} parameters")
+
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+
         train_data = df_train.iloc[train_idx]
         val_data = df_train.iloc[val_idx]
 
