@@ -1,20 +1,30 @@
-from pathlib import Path
-import pandas as pd
-from sklearn.model_selection import KFold
-from utils import get_annotations, parallel_preprocess_dataset
-    save_model,
-    count_trainable_params,
-from dataset import DashcamDataset
-from transforms import basic_transforms
+# pytorch imports
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+
+# stl imports
+import time
+import logging
+import argparse
+from pathlib import Path
+
+# local imports
+from dataset import DashcamDataset
+from transforms import basic_transforms
 from model import TrafficTransformer
 from loss import TrafficLoss
-import argparse
-from torch.utils.tensorboard import SummaryWriter
-import logging
-import time
+from utils import (
+    get_annotations,
+    parallel_preprocess_dataset,
+    save_model,
+    count_trainable_params,
+)
+
+# aux imports
+import pandas as pd
+from sklearn.model_selection import KFold
 
 
 def train(model, dataloader, loss_fn, optimizer, device="cpu"):
