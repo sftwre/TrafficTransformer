@@ -4,6 +4,8 @@ import cv2
 import numpy as np
 import pandas as pd
 from multiprocessing import Pool
+from pathlib import Path
+import torch
 import torch.nn as nn
 from logging import getLogger
 
@@ -162,8 +164,7 @@ def save_model(state_dict: dict, filename: str):
     Model weights are saved to ./models/<filename>.pth
 
     Args:
-        model: trained model weights
-        state_dict: Dictionary with arbitrary model data and meta-data
+        state_dict: Dictionary with arbitrary model data and training info
         filename: name of model file
     """
 
