@@ -10,6 +10,9 @@ from torch.utils.data import DataLoader
 from model import TrafficTransformer
 from loss import TrafficLoss
 import argparse
+from torch.utils.tensorboard import SummaryWriter
+import logging
+import time
 
 
 def train(model, dataloader, loss_fn, optimizer, device="cpu"):
@@ -103,16 +106,29 @@ if __name__ == "__main__":
         default=8,
         help="Number of train/val samples in each batch",
     )
+
+    parser.add_argument(
+        "--tb_logging",
+        action="store_true",
+        default=False,
+        help="Flag to enable TensorBoard logging",
+    )
+
     args = parser.parse_args()
 
+    # Configure logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    logger.info("Loading training data...")
     data_base_dir = Path("./nexar-collision-prediction")
     df_train = pd.read_csv(data_base_dir / "train.csv")
 
     df_train["time_of_event"] = df_train["time_of_event"].fillna(0)
     df_train["time_of_alert"] = df_train["time_of_alert"].fillna(0)
 
-
-annotations = get_annotations(df_train)
+    logger.info("Extracting annotations and key frames from video data...")
+    start_time = time.time()
     annotations = get_annotations(df_train)
 
     video_dir = data_base_dir / "train"
@@ -124,20 +140,27 @@ annotations = get_annotations(df_train)
         image_size=args.image_size,
         num_workers=args.n_workers,
     )
-optimizer = torch.optim.Adam(model.parameters(), lr=5e-3)
+    elapsed_time = (time.time() - start_time) / 60
+    logger.info(f"Processed data in {elapsed_time:.2f} minutes.")
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     loss_fn = TrafficLoss()
 
+    if args.tb_logging:
+        writer = SummaryWriter()
+
+    tb_tag = "{}, Fold[{}]"
 
     # Set up k-fold validation
     kf = KFold(n_splits=args.k, shuffle=True, random_state=42)
 
+    logger.info(f"Performing cross-validation with {args.k} folds...")
 
     for fold, (train_idx, val_idx) in enumerate(kf.split(df_train)):
 
         # model init
         model = TrafficTransformer(image_size=args.image_size).to(device)
+        logger.info(f"Initialized TrafficTransormer and moved to {device}")
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
         train_data = df_train.iloc[train_idx]
         val_data = df_train.iloc[val_idx]
@@ -177,11 +200,24 @@ optimizer = torch.optim.Adam(model.parameters(), lr=5e-3)
         )
 
     train_loss = train(model, train_dataloader, loss_fn, optimizer, device=device)
-    val_loss = eval(model, val_dataloader, loss_fn, device=device)
+
+
+        fold_str = f"{fold+1}/{args.k}"
+        train_tag = tb_tag.format(
+            "Train loss",
+            fold_str,
+        )
+
+        val_tag = tb_tag.format(
+            "Val loss",
+            fold_str,
+        )
 
         # train model on K-1 folds
         for epoch in range(args.num_epochs):
 
+            start_time = time.time()
+            logger.info(f"Training epoch [{epoch+1}/{args.num_epochs}]...")
             train_loss = train(
                 model,
                 train_dataloader,
@@ -189,4 +225,23 @@ optimizer = torch.optim.Adam(model.parameters(), lr=5e-3)
                 optimizer,
                 device=device,
             )
+
+            elapsed_time = (time.time() - start_time) / 60
+            logger.info(f"Training completed in {elapsed_time:.2f} minutes")
+
+            start_time = time.time()
+            logger.info(f"Validating model on hold-out set...")
             val_loss = eval(model, val_dataloader, loss_fn, device=device)
+
+            elapsed_time = (time.time() - start_time) / 60
+            logger.info(f"Validation completed in {elapsed_time:.2f} minutes")
+
+            log = (
+                tb_tag.format("", fold_str)
+                + f"-> train loss: {train_loss:.3f}, val_loss: {val_loss:.3f}"
+            )
+
+            logger.info(log)
+            if args.tb_logging:
+                writer.add_scalar(train_tag, train_loss, epoch)
+                writer.add_scalar(val_tag, val_loss, epoch)
