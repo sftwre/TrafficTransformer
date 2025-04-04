@@ -140,3 +140,23 @@ def parallel_preprocess_dataset(
     logger.info(f"Processed {len(processed_data)} out of {len(args_list)} videos.")
 
     return processed_data
+def save_model(state_dict: dict, filename: str):
+    """
+    Writes model weights to disk.
+    Model weights are saved to ./models/<filename>.pth
+
+    Args:
+        model: trained model weights
+        state_dict: Dictionary with arbitrary model data and meta-data
+        filename: name of model file
+    """
+
+    model_dir = Path(f"./models")
+
+    if not model_dir.exists():
+        os.mkdir(model_dir)
+
+    torch.save(state_dict, model_dir / filename)
+
+    logger = getLogger(__name__)
+    logger.info(f"Model weights saved to -> {model_dir / filename}")

@@ -2,6 +2,7 @@ from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import KFold
 from utils import get_annotations, parallel_preprocess_dataset
+    save_model,
 from dataset import DashcamDataset
 from transforms import basic_transforms
 import torch
@@ -199,8 +200,12 @@ if __name__ == "__main__":
             val_dataset, batch_size=args.batch_size, shuffle=True
         )
 
-    train_loss = train(model, train_dataloader, loss_fn, optimizer, device=device)
+        best_loss = float("inf")
 
+        state_dict = {
+            "model": model.state_dict(),
+            "epoch": -1,
+        }
 
         fold_str = f"{fold+1}/{args.k}"
         train_tag = tb_tag.format(
@@ -236,12 +241,21 @@ if __name__ == "__main__":
             elapsed_time = (time.time() - start_time) / 60
             logger.info(f"Validation completed in {elapsed_time:.2f} minutes")
 
+            if val_loss < best_loss:
+                best_loss = val_loss
+                state_dict["model"] = model.state_dict()
+                state_dict["epoch"] = epoch + 1
+                logger.info(f"Best validation loss updated to: {best_loss:.3f}")
+
             log = (
                 tb_tag.format("", fold_str)
                 + f"-> train loss: {train_loss:.3f}, val_loss: {val_loss:.3f}"
             )
 
             logger.info(log)
+
             if args.tb_logging:
                 writer.add_scalar(train_tag, train_loss, epoch)
                 writer.add_scalar(val_tag, val_loss, epoch)
+
+        save_model(state_dict, f"best_model_fold_{fold+1}.pth")
