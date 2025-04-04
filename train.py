@@ -44,7 +44,14 @@ def train(model, dataloader, loss_fn, optimizer, device="cpu"):
 
         batch_loss += loss.cpu().item()
 
+        # delete reference count to reduce memory usage
+        del frames, labels, alert_time, pred_scores, pred_alerts, loss
+
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
     epoch_loss = batch_loss / len(dataloader)
+
     return epoch_loss
 
 
