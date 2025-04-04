@@ -8,6 +8,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from logging import getLogger
+from typing import List
 
 
 def get_annotations(df: pd.DataFrame) -> dict:
@@ -102,7 +103,9 @@ def process_video(args):
     try:
         # Extract frames with higher resolution
         frames = extract_keyframes(
-            video_path, num_frames=num_frames, target_size=(image_size, image_size)
+            video_path,
+            num_frames=num_frames,
+            target_size=(image_size, image_size),
         )
 
         return video_id, {"frames": frames}
@@ -114,7 +117,11 @@ def process_video(args):
 
 
 def parallel_preprocess_dataset(
-    video_dir, video_ids, num_frames=8, image_size=160, num_workers=4
+    video_dir: str | Path,
+    video_ids: List[str],
+    num_frames=8,
+    image_size=160,
+    num_workers=4,
 ):
     """
     Pre-processes multiple videos in parallel.
