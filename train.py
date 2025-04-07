@@ -17,9 +17,6 @@ from model import TrafficTransformer
 from loss import TrafficLoss
 from utils import save_model, count_trainable_params
 from preprocessing import parallel_preprocess_dataset, get_annotations
-    save_model,
-    count_trainable_params,
-)
 
 # aux imports
 import pandas as pd
