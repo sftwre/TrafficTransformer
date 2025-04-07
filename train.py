@@ -15,12 +15,8 @@ from dataset import DashcamDataset
 from transforms import basic_transforms
 from model import TrafficTransformer
 from loss import TrafficLoss
-from utils import (
-    get_annotations,
-    parallel_preprocess_dataset,
-    save_model,
-    count_trainable_params,
-)
+from utils import save_model, count_trainable_params
+from preprocessing import parallel_preprocess_dataset, get_annotations
 
 # aux imports
 import pandas as pd
