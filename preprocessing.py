@@ -9,15 +9,22 @@ from logging import getLogger
 from pathlib import Path
 
 
-def get_annotations(df: pd.DataFrame) -> dict:
+def get_annotations(df: pd.DataFrame, test: bool = False) -> dict:
     annotations = {}
     for _, row in df.iterrows():
         video_id = f"{int(row['id'].item()):05d}"
-        annotations[video_id] = {
-            "label": int(row["target"].item()),
-            "alert_time": row["time_of_alert"].item(),
-            "event_time": row["time_of_event"].item(),
-        }
+
+        if not test:
+            annotations[video_id] = {
+                "label": int(row["target"].item()),
+                "alert_time": row["time_of_alert"].item(),
+                "event_time": row["time_of_event"].item(),
+            }
+        else:
+            annotations[video_id] = {
+                "label": 0,
+                "alert_time": 0,
+            }
     return annotations
 
 
