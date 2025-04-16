@@ -56,3 +56,42 @@ class TrafficTransformer(nn.Module):
         pred_alerts = self.regressor(x)
 
         return pred_scores, pred_alerts
+
+    @torch.no_grad()
+    def batch_predict(self, dataloader) -> tuple[list, list]:
+        """
+        Performs batch predictions to return scores and video IDs.
+        Args:
+            model: The trained model for inference.
+            dataloader: DataLoader for the dataset.
+            device: Device to perform inference on (default: "cuda").
+        Returns:
+            scores: List of predicted scores.
+            events: List of predicted event times.
+            video_ids: List of video IDs corresponding to the predictions.
+        """
+        self.eval()
+
+        scores = []
+        events = []
+        video_ids = []
+
+        device = next(self.parameters()).device
+
+        for batch in tqdm(dataloader):
+
+            # Transfer data to the device
+            frames = batch["frames"].to(device)
+            batch_video_ids = batch["video_id"]
+
+            pred_scores, pred_alerts = self.forward(frames)
+
+            scores.extend(pred_scores.cpu().numpy())
+            events.extend(pred_alerts.cpu().numpy())
+            video_ids.extend(batch_video_ids)
+
+            del frames, pred_scores, pred_alerts
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+
+        return scores, events, video_ids
