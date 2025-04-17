@@ -38,7 +38,6 @@ def train(
     optimizer,
     eval_iter,
     lr_scheduler=None,
-    eval_iter=150,
     **kwargs,
 ) -> float:
     """
@@ -184,7 +183,7 @@ def validate(
 
         inputs = {"pred_scores": pred_scores_batch, "pred_alerts": pred_alerts_batch}
         targets = {"label": labels, "alert_time": alert_time}
-        loss = loss_fn(inputs=inputs, targets=targets)
+        loss = criterion(inputs=inputs, targets=targets)
         batch_loss += loss.cpu().item()
 
     crash_events = np.array(crash_events).flatten()
