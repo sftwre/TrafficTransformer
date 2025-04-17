@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+from utils import get_model_device
 
 
 class TrafficTransformer(nn.Module):
