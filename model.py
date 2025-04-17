@@ -9,6 +9,13 @@ from tqdm import tqdm
 from utils import get_model_device
 
 
+def weights_init_linear(m):
+    classname = m.__class__.__name__
+    if classname.find("Linear") != -1:
+        nn.init.normal_(m.weight.data, std=0.001)
+        nn.init.constant_(m.bias.data, 0.0)
+
+
 class TrafficTransformer(nn.Module):
 
     def __init__(
@@ -33,23 +40,41 @@ class TrafficTransformer(nn.Module):
 
         self.classifier = nn.Sequential(
             nn.Linear(self.output_dim, 32),
-            nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.LeakyReLU(),
+            nn.Dropout(0.5),
             nn.Linear(32, 1),
             nn.Sigmoid(),
         )
 
         self.regressor = nn.Sequential(
-            nn.Linear(self.output_dim, 32), nn.ReLU(), nn.Dropout(0.3), nn.Linear(32, 1)
+            nn.Linear(self.output_dim, 32),
+            nn.LeakyReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(32, 1),
         )
 
         self.proj_layer = nn.Linear(self.hidden_dim, self.output_dim)
         self.fusion_layer = nn.Sequential(
-            nn.Linear(self.output_dim, self.output_dim), nn.ReLU()
+            nn.Linear(self.output_dim, self.output_dim), nn.LeakyReLU()
         )
 
-    def forward(self, x):
+        # initialize linear layer weights
+        self.classifier.apply(weights_init_linear)
+        self.regressor.apply(weights_init_linear)
+        self.proj_layer.apply(weights_init_linear)
+        self.fusion_layer.apply(weights_init_linear)
 
+    def forward(self, x) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Forward pass through the model.
+        Args:
+            x: Input tensor of shape (batch_size, seq_len, ch, h, w).
+        Returns:
+            pred_scores: Predicted scores for classification.
+            pred_alerts: Predicted alert times for regression.
+        """
+
+        # x: [batch_size, seq_len, ch, h, w]
         batch_size, seq_len, ch, h, w = x.size()
         features = []
 
