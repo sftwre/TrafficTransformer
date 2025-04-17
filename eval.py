@@ -196,8 +196,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--checkpoint_path",
         type=str,
-        default="./models/eval/best_model_fold_1_leaky.pth",
         help="Path to the model checkpoint file",
+        required=True,
     )
     parser.add_argument(
         "--filename", type=str, default="submission.csv", help="Output filename"
@@ -206,11 +206,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--submit",
         action="store_true",
-        default=True,
+        default=False,
         help="Flag to indicate whether to submit the results",
     )
     parser.add_argument(
-        "--dataset", type=str, default="test.csv", help="Dataset to evaluate on"
+        "--dataset", type=str, required=True, help="Dataset to evaluate on"
     )
     args = parser.parse_args()
 
@@ -252,7 +252,6 @@ if __name__ == "__main__":
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model = TrafficTransformer()
 
-        # TODO: check if the checkpoint exists before data is loaded
         checkpoint_path = Path(args.checkpoint_path)
         checkpoint = torch.load(checkpoint_path, map_location="cpu")
         model.load_state_dict(checkpoint["model"])
