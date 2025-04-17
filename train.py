@@ -17,8 +17,10 @@ from model import TrafficTransformer
 from loss import TrafficLoss
 from utils import save_model, get_lr_scheduler, get_model_device
 from preprocessing import parallel_preprocess_dataset, get_annotations
+from eval import gen_clf_plots, gen_reg_plots
 
 # aux imports
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold
 
@@ -34,10 +36,25 @@ def train(
     dataloader,
     criterion,
     optimizer,
+    eval_iter,
     lr_scheduler=None,
     eval_iter=150,
     **kwargs,
-):
+) -> float:
+    """
+    Trains model for one epoch while collecting loss and prediction data.
+
+    Args:
+        model (nn.Module): The model to be trained.
+        dataloader (DataLoader): DataLoader for the training dataset.
+        criterion (callable): Loss function.
+        optimizer (torch.optim.Optimizer): Optimizer for the model.
+        eval_iter (int): Iteration interval for evaluation.
+        lr_scheduler (torch.optim.lr_scheduler, optional): Learning rate scheduler.
+        kwargs: Additional arguments such as clip_grad, max_norm, grad_flow.
+    Returns:
+        float: Average loss for the epoch.
+    """
 
     # set model in training mode
     model.train()
@@ -126,25 +143,64 @@ def train(
 
 
 @torch.no_grad()
-def validate(model, dataloader, loss_fn, device="cpu"):
-
+def validate(
+    model, dataloader, criterion, **kwargs
+) -> tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Validates the model on the validation dataset.
+    Args:
+        model (nn.Module): The model to be validated.
+        dataloader (DataLoader): DataLoader for the validation dataset.
+        criterion (callable): Loss function.
+    Returns:
+        val_loss (float): Average loss for the validation dataset.
+        crash_events (np.ndarray): Ground truth binary labels.
+        pred_scores (np.ndarray): Predicted probability scores for crash events.
+        alert_times (np.ndarray): Ground truth alert times from dashcams.
+        pred_alerts (np.ndarray): Predicted alert times for crash events.
+    """
     model.eval()
 
     batch_loss = 0
+    pred_scores = []
+    pred_alerts = []
+
+    crash_events = []
+    alert_times = []
+
+    device = get_model_device(model)
 
     for batch in dataloader:
         frames = batch["frames"].to(device)
         labels = batch["label"].unsqueeze(1).to(device)
         alert_time = batch["alert_time"].unsqueeze(1).to(device)
-        pred_scores, pred_alerts = model(frames)
+        pred_scores_batch, pred_alerts_batch = model(frames)
 
-        inputs = {"pred_scores": pred_scores, "pred_alerts": pred_alerts}
+        # store predictions and targets for plotting
+        pred_scores.append(pred_scores_batch.cpu().numpy().flatten())
+        pred_alerts.append(pred_alerts_batch.cpu().numpy().flatten())
+        crash_events.append(labels.cpu().numpy().flatten())
+        alert_times.append(alert_time.cpu().numpy().flatten())
+
+        inputs = {"pred_scores": pred_scores_batch, "pred_alerts": pred_alerts_batch}
         targets = {"label": labels, "alert_time": alert_time}
         loss = loss_fn(inputs=inputs, targets=targets)
         batch_loss += loss.cpu().item()
 
-    eval_loss = batch_loss / len(dataloader)
-    return eval_loss
+    crash_events = np.array(crash_events).flatten()
+    alert_times = np.array(alert_times).flatten()
+    pred_scores = np.array(pred_scores).flatten()
+    pred_alerts = np.array(pred_alerts).flatten()
+
+    # delete reference count to reduce GPU memory usage
+    del frames, labels, alert_time, pred_scores_batch, pred_alerts_batch
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+
+    # compute average loss
+    val_loss = batch_loss / len(dataloader)
+
+    return val_loss, crash_events, pred_scores, alert_times, pred_alerts
 
 
 def init_model(**kwargs) -> nn.Module:
@@ -206,6 +262,7 @@ def train_driver(
         "epoch": -1,
     }
 
+    eval_iter = 150
     lr_scheduler = kwargs.get("lr_scheduler", None)
 
     for epoch in range(num_epochs):
@@ -216,6 +273,7 @@ def train_driver(
             train_dataloader,
             criterion,
             optimizer,
+            eval_iter,
             lr_scheduler=lr_scheduler,
             clip_grad=kwargs["clip_grad"],
             max_norm=kwargs["max_norm"],
@@ -227,7 +285,9 @@ def train_driver(
 
         start_time = time.time()
         logger.info(f"Validating model on hold-out set...")
-        val_loss = validate(model, val_dataloader, criterion, device=device)
+        val_loss, crash_events, pred_scores, alert_times, pred_alerts = validate(
+            model, val_dataloader, criterion, device=device
+        )
 
         elapsed_time = (time.time() - start_time) / 60
         logger.info(f"Validation completed in {elapsed_time:.2f} minutes")
@@ -238,9 +298,9 @@ def train_driver(
             state_dict["epoch"] = epoch + 1
             logger.info(f"Best validation loss updated to: {best_loss:.3f}")
 
-        log = f"train loss: {train_loss:.3f}, val_loss: {val_loss:.3f}"
-        logger.info(log)
+        logger.info(f"train loss: {train_loss:.3f}, val_loss: {val_loss:.3f}")
 
+        # tensorboard logging
         if model.writer:
             train_tag = kwargs.get("train_tag", "Train loss")
             val_tag = kwargs.get("val_tag", "Val loss")
@@ -248,6 +308,20 @@ def train_driver(
 
             model.writer.add_scalar(train_tag, train_loss, epoch)
             model.writer.add_scalar(val_tag, val_loss, epoch)
+
+            # generate evaluation plots for classification and regression tasks
+            clf_fig = gen_clf_plots(y_true=crash_events, y_pred=pred_scores)
+            reg_fig = gen_reg_plots(y_true=alert_times, y_pred=pred_alerts)
+
+            clf_tag = kwargs.get("clf_tag", "Classification plots")
+            reg_tag = kwargs.get("reg_tag", "Regression plots")
+
+            model.writer.add_figure(
+                clf_tag, clf_fig, global_step=global_step, close=True
+            )
+            model.writer.add_figure(
+                reg_tag, reg_fig, global_step=global_step, close=True
+            )
 
             if lr_scheduler:
                 model.writer.add_scalar(lr_tag, lr_scheduler.get_last_lr()[0], epoch)
@@ -480,6 +554,9 @@ if __name__ == "__main__":
                     fold_str,
                 )
 
+                clf_tag = tb_tag.format("Classification plots", fold_str)
+                reg_tag = tb_tag.format("Regression plots", fold_str)
+
                 logger.info(f"Fold {fold_str} training started...")
 
                 state_dict = train_driver(
@@ -496,6 +573,8 @@ if __name__ == "__main__":
                     train_tag=train_tag,
                     val_tag=val_tag,
                     lr_tag=lr_tag,
+                    clf_tag=clf_tag,
+                    reg_tag=reg_tag,
                 )
 
                 filename = f"traffic_transformer_fold_{fold_str}.pth"
