@@ -1,23 +1,32 @@
 import os
-import time
 import cv2
 import numpy as np
 import pandas as pd
 from multiprocessing import Pool
 from typing import List
 from logging import getLogger
+
+logger = getLogger(__name__)
+
 from pathlib import Path
 
 
-def get_annotations(df: pd.DataFrame) -> dict:
+def get_annotations(df: pd.DataFrame, test: bool = False) -> dict:
     annotations = {}
     for _, row in df.iterrows():
         video_id = f"{int(row['id'].item()):05d}"
-        annotations[video_id] = {
-            "label": int(row["target"].item()),
-            "alert_time": row["time_of_alert"].item(),
-            "event_time": row["time_of_event"].item(),
-        }
+
+        if not test:
+            annotations[video_id] = {
+                "label": int(row["target"].item()),
+                "alert_time": row["time_of_alert"].item(),
+                "event_time": row["time_of_event"].item(),
+            }
+        else:
+            annotations[video_id] = {
+                "label": 0,
+                "alert_time": 0,
+            }
     return annotations
 
 
@@ -27,7 +36,6 @@ def extract_keyframes(video_path, num_frames=12, target_size=(160, 160)):
     Uses exponential distribution to give more weight to frames closer to the end.
     """
     cap = cv2.VideoCapture(video_path)
-    logger = getLogger(__name__)
 
     if not cap.isOpened():
         logger.error(f"Could not open the video: {video_path}")
@@ -109,7 +117,6 @@ def process_video(args):
         return video_id, {"frames": frames}
 
     except Exception as e:
-        logger = getLogger(__name__)
         logger.exception(f"Error processing video {video_id}: {str(e)}")
         return video_id, None
 
@@ -130,11 +137,8 @@ def parallel_preprocess_dataset(
         if os.path.exists(video_path):
             args_list.append((video_path, video_id, num_frames, image_size))
 
-    start_time = time.time()
-
-    logger = getLogger(__name__)
     logger.info(
-        f"Starting parallel pre-processing of {len(args_list)} videos with {num_workers} workers..."
+        f"Preprocessing {len(args_list)} videos with {num_workers} parallel workers..."
     )
 
     processed_data = {}
@@ -144,7 +148,6 @@ def parallel_preprocess_dataset(
             if data is not None:
                 processed_data[video_id] = data
 
-    logger.info(f"Pre-processing completed in {time.time() - start_time:.2f} seconds.")
     logger.info(f"Processed {len(processed_data)} out of {len(args_list)} videos.")
 
     return processed_data
